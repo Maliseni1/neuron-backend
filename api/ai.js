@@ -10,8 +10,8 @@ export default async function handler(req, res) {
 
   const { action, payload } = req.body;
   
-  // SWITCHED TO 2.0 FLASH for better endpoint compatibility
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  // SWITCHED TO 1.5.-FLASH-8b for better endpoint compatibility
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-8b" });
 
   try {
     try {
