@@ -10,11 +10,10 @@ export default async function handler(req, res) {
 
   const { action, payload } = req.body;
   
-  // Use the full model path to satisfy the v1beta endpoint requirement
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  // SWITCHED TO 2.0 FLASH for better endpoint compatibility
+  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
   try {
-    // Analytics tracking (optional, wrapped to prevent crashes)
     try {
       await track(`AI_${action}`, { query: action === 'transcribe' ? 'audio' : payload });
     } catch (e) {
@@ -31,31 +30,33 @@ export default async function handler(req, res) {
       If no match, return {"word": "No match", "type": "", "definition": ""}.`;
       
       const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text().replace(/```json|```/g, "").trim();
-      return res.status(200).json(JSON.parse(text));
+      // More robust response extraction
+      const text = await result.response.text();
+      const cleaned = text.replace(/```json|```/g, "").trim();
+      return res.status(200).json(JSON.parse(cleaned));
 
     } else if (action === 'details') {
       const prompt = `Provide example, synonyms, and etymology for "${payload}". 
       Return ONLY JSON: {"example": "...", "synonyms": [], "etymology": "..."}`;
       
       const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text().replace(/```json|```/g, "").trim();
-      return res.status(200).json(JSON.parse(text));
+      const text = await result.response.text();
+      const cleaned = text.replace(/```json|```/g, "").trim();
+      return res.status(200).json(JSON.parse(cleaned));
 
     } else if (action === 'transcribe') {
       const result = await model.generateContent([
         "Return exactly the word spoken in this audio. No punctuation.",
         { inlineData: { mimeType: "audio/mp4", data: payload } }
       ]);
-      const response = await result.response;
-      return res.status(200).json({ text: response.text().trim() });
+      const text = await result.response.text();
+      return res.status(200).json({ text: text.trim() });
     }
 
     return res.status(400).json({ error: 'Invalid action' });
   } catch (error) {
     console.error('Backend AI Error:', error);
-    return res.status(500).json({ error: error.message });
+    // Return a friendlier error to the app
+    return res.status(500).json({ error: "AI endpoint error", message: error.message });
   }
 }
