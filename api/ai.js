@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     if (action === 'details') {
       const word = payload;
       // FIX: Changed model name to 'gemini-1.5-flash' (stable) or 'gemini-pro'
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); 
+      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
       const prompt = `Provide a dictionary-style detail for the word "${word}". 
       Return ONLY a raw JSON object. No markdown.
