@@ -1,7 +1,6 @@
 import Groq from "groq-sdk";
 import { v2 as cloudinary } from 'cloudinary';
 
-// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -19,18 +18,11 @@ export default async function handler(req, res) {
     if (action === 'details') {
       const word = payload;
       
-      // 1. Fetch Text Details from Groq (Llama 3.3 70B)
+      // 1. Fetch Text Details from Groq
       const chatCompletion = await groq.chat.completions.create({
         messages: [
-          {
-            role: "system",
-            content: "You are a professional dictionary assistant. Return ONLY a JSON object. No prose."
-          },
-          {
-            role: "user",
-            content: `Provide dictionary details for "${word}". 
-            Keys: "example" (usage sentence), "etymology" (origin), "imageSearchQuery" (2-word visual noun description).`
-          },
+          { role: "system", content: "Return ONLY a JSON object. No prose." },
+          { role: "user", content: `Details for "${word}". Keys: "example", "etymology", "imageSearchQuery" (2-word noun).` }
         ],
         model: "llama-3.3-70b-versatile",
         response_format: { type: "json_object" },
@@ -38,15 +30,26 @@ export default async function handler(req, res) {
 
       const aiResponse = JSON.parse(chatCompletion.choices[0].message.content);
 
-      // 2. Fetch Image and Upload to Cloudinary
-      // Using a high-quality Unsplash random redirect based on the AI's search query
-      const sourceImageUrl = `https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=800&auto=format&fit=crop&sig=${encodeURIComponent(word)}`;
+      // 2. FETCH REAL IMAGE FROM UNSPLASH API
+      const unsplashRes = await fetch(
+        `https://api.unsplash.com/search/photos?query=${encodeURIComponent(aiResponse.imageSearchQuery)}&per_page=1`,
+        { headers: { Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}` } }
+      );
       
+      const unsplashData = await unsplashRes.json();
+      
+      // Fallback image if search fails
+      let sourceImageUrl = "https://images.unsplash.com/photo-1451187580459-43490279c0fa"; 
+      
+      if (unsplashData.results && unsplashData.results.length > 0) {
+        sourceImageUrl = unsplashData.results[0].urls.regular;
+      }
+
+      // 3. UPLOAD TO CLOUDINARY
       const uploadResponse = await cloudinary.uploader.upload(sourceImageUrl, {
         public_id: `word_${word.toLowerCase().trim()}`,
         folder: "neuron_app_images",
-        overwrite: false, // Don't re-upload if we already have it
-        resource_type: "image"
+        overwrite: false,
       });
 
       return res.status(200).json({
@@ -56,14 +59,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // Fallback for other actions (search, transcribe)
-    return res.status(200).json({ status: "ok", message: "Action received" });
-
+    return res.status(200).json({ status: "ok" });
   } catch (error) {
     console.error("Backend Error:", error);
-    return res.status(500).json({ 
-      error: "AI Engine error", 
-      message: error.message 
-    });
+    return res.status(500).json({ error: error.message });
   }
 }
