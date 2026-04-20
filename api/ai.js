@@ -17,31 +17,33 @@ export default async function handler(req, res) {
   try {
     if (action === 'details') {
       const word = payload;
-      // FIX: Changed model name to 'gemini-1.5-flash' (stable) or 'gemini-pro'
-      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+      
+      // Update: Use the Gemini 2.0 Flash identifier
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" }); 
 
-      const prompt = `Provide a dictionary-style detail for the word "${word}". 
-      Return ONLY a raw JSON object. No markdown.
-      {
-        "example": "modern sentence",
-        "etymology": "origin story",
-        "imageSearchQuery": "2-word visual noun"
-      }`;
+      const prompt = `Return ONLY a JSON object for the word "${word}". 
+      Required keys: 
+      "example" (usage sentence), 
+      "etymology" (brief origin), 
+      "imageSearchQuery" (visual noun).
+      Strict JSON format only.`;
 
       const result = await model.generateContent(prompt);
-      const text = result.response.text().replace(/```json|```/g, "").trim();
-      const aiResponse = JSON.parse(text);
+      const text = result.response.text();
+      
+      // Better JSON cleaning (handles extra text or markdown)
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("AI failed to return valid JSON");
+      const aiResponse = JSON.parse(jsonMatch[0]);
 
-      // FIX: Using a reliable Unsplash URL structure instead of the deprecated Source API
-      const searchQuery = encodeURIComponent(aiResponse.imageSearchQuery);
-      const sourceImageUrl = `https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=800&auto=format&fit=crop&sig=${word}`; 
-      // Note: For a true production search, we'd use the Unsplash API, 
-      // but for now, we'll send a high-quality landscape as a fallback to test Cloudinary.
+      // Using a high-quality stable landscape as the test visual 
+      // (We will refine the "dynamic" search once the connection is green)
+      const sourceImageUrl = `https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=800&auto=format&fit=crop`;
       
       const uploadResponse = await cloudinary.uploader.upload(sourceImageUrl, {
         public_id: `word_${word.toLowerCase().trim()}`,
         folder: "neuron_app_images",
-        overwrite: false,
+        overwrite: true,
         resource_type: "image"
       });
 
@@ -57,8 +59,8 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error("Backend Error:", error);
     return res.status(500).json({ 
-      error: "AI logic error", 
-      details: error.message 
+      error: "AI initialization failed", 
+      message: error.message 
     });
   }
 }
