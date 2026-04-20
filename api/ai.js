@@ -1,7 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { v2 as cloudinary } from 'cloudinary';
 
-// Configure Cloudinary using ES Module compatible syntax
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -18,25 +17,30 @@ export default async function handler(req, res) {
   try {
     if (action === 'details') {
       const word = payload;
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Using 1.5 for broader compatibility
 
-      // 1. Get AI Text Details
+      // 1. Get AI Text Details with strict JSON instruction
       const prompt = `Provide a dictionary-style detail for the word "${word}". 
-      Return ONLY a JSON object with these keys: 
-      "example" (a modern sentence), 
-      "etymology" (origin story), 
-      "imageSearchQuery" (a 2-word noun description for a photo search).`;
+      Return ONLY a raw JSON object. No markdown, no preamble.
+      {
+        "example": "modern sentence",
+        "etymology": "origin story",
+        "imageSearchQuery": "2-word visual noun"
+      }`;
 
       const result = await model.generateContent(prompt);
-      const responseText = result.response.text().replace(/```json|```/g, "").trim();
-      const aiResponse = JSON.parse(responseText);
+      const text = result.response.text();
+      
+      // Clean JSON string in case AI adds markdown blocks
+      const cleanJson = text.replace(/```json|```/g, "").trim();
+      const aiResponse = JSON.parse(cleanJson);
 
-      // 2. Visual Engine: Fetch & Upload to Cloudinary
-      // Using a more reliable Unsplash URL pattern
-      const sourceImageUrl = `https://images.unsplash.com/photo-1500622764614-be3c1601719a?q=80&w=800&auto=format&fit=crop&keywords=${encodeURIComponent(aiResponse.imageSearchQuery)}`;
+      // 2. Fetch image and upload to Cloudinary
+      // Using a reliable Unsplash Source redirect
+      const sourceImageUrl = `https://source.unsplash.com/800x600/?${encodeURIComponent(aiResponse.imageSearchQuery)}`;
       
       const uploadResponse = await cloudinary.uploader.upload(sourceImageUrl, {
-        public_id: `word_${word.toLowerCase()}`,
+        public_id: `word_${word.toLowerCase().trim()}`,
         folder: "neuron_app_images",
         overwrite: false,
         resource_type: "image"
@@ -52,9 +56,10 @@ export default async function handler(req, res) {
     return res.status(200).json({ status: "ok" });
 
   } catch (error) {
-    console.error("Detailed Error:", error);
+    console.error("Backend Error:", error);
+    // Return a structured error so the app doesn't hang
     return res.status(500).json({ 
-      error: "Brain overload", 
+      error: "Service temporarily unavailable",
       details: error.message 
     });
   }
